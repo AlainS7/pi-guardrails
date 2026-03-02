@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { registerAddPolicyCommand } from "./commands/add-policy";
 import { registerGuardrailsSettings } from "./commands/settings-command";
 import { configLoader } from "./config";
 import { setupGuardrailsHooks } from "./hooks";
@@ -8,7 +9,7 @@ import { pendingWarnings } from "./utils/warnings";
  * Guardrails Extension
  *
  * Security hooks to prevent potentially dangerous operations:
- * - protect-env-files: Prevents access to .env files (except .example/.sample/.test)
+ * - policies: File access policies with per-rule protection levels
  * - permission-gate: Prompts for confirmation on dangerous commands
  *
  * Toolchain features (preventBrew, preventPython, enforcePackageManager,
@@ -28,6 +29,7 @@ export default async function (pi: ExtensionAPI) {
 
   setupGuardrailsHooks(pi, config);
   registerGuardrailsSettings(pi);
+  registerAddPolicyCommand(pi);
 
   pi.on("session_start", (_event, ctx) => {
     for (const warning of pendingWarnings.splice(0)) {

@@ -24,13 +24,48 @@ export interface DangerousPattern extends PatternConfig {
   description: string;
 }
 
+/**
+ * Protection level for a policy rule.
+ */
+export type Protection = "none" | "readOnly" | "noAccess";
+
+/**
+ * A named policy rule. Matches files by patterns and enforces a protection level.
+ */
+export interface PolicyRule {
+  /** Stable identifier used for deduplication across scopes. */
+  id: string;
+  /** Optional display name for settings/UI. */
+  name?: string;
+  /** Human-readable description. */
+  description?: string;
+  /** File patterns to protect. */
+  patterns: PatternConfig[];
+  /** Optional exceptions. */
+  allowedPatterns?: PatternConfig[];
+  /** Protection level. */
+  protection: Protection;
+  /** Block only when file exists on disk. Default true. */
+  onlyIfExists?: boolean;
+  /** Message shown when blocked; supports {file} placeholder. */
+  blockMessage?: string;
+  /** Per-rule toggle. Default true. */
+  enabled?: boolean;
+}
+
 export interface GuardrailsConfig {
   version?: string;
   enabled?: boolean;
   features?: {
-    protectEnvFiles?: boolean;
+    policies?: boolean;
     permissionGate?: boolean;
+    // Deprecated. Kept only for migration.
+    protectEnvFiles?: boolean;
   };
+  policies?: {
+    rules?: PolicyRule[];
+  };
+  // Deprecated. Kept only for migration.
   envFiles?: {
     protectedPatterns?: PatternConfig[];
     allowedPatterns?: PatternConfig[];
@@ -53,16 +88,11 @@ export interface ResolvedConfig {
   version: string;
   enabled: boolean;
   features: {
-    protectEnvFiles: boolean;
+    policies: boolean;
     permissionGate: boolean;
   };
-  envFiles: {
-    protectedPatterns: PatternConfig[];
-    allowedPatterns: PatternConfig[];
-    protectedDirectories: PatternConfig[];
-    protectedTools: string[];
-    onlyBlockIfExists: boolean;
-    blockMessage: string;
+  policies: {
+    rules: PolicyRule[];
   };
   permissionGate: {
     patterns: DangerousPattern[];
@@ -79,7 +109,9 @@ import { ConfigLoader, type Migration } from "@aliou/pi-utils-settings";
 import {
   backupConfig,
   CURRENT_VERSION,
+  migrateEnvFilesToPolicies,
   migrateV0,
+  needsEnvFilesToPoliciesMigration,
   needsMigration,
 } from "./utils/migration";
 import { pendingWarnings } from "./utils/warnings";
@@ -139,38 +171,47 @@ const migrations: Migration<GuardrailsConfig>[] = [
       return stripRemovedFields(config);
     },
   },
+  {
+    name: "envFiles-to-policies",
+    shouldRun: (config) => needsEnvFilesToPoliciesMigration(config),
+    run: (config) => migrateEnvFilesToPolicies(config),
+  },
 ];
 
 const DEFAULT_CONFIG: ResolvedConfig = {
   version: CURRENT_VERSION,
   enabled: true,
   features: {
-    protectEnvFiles: true,
+    policies: true,
     permissionGate: true,
   },
-  envFiles: {
-    protectedPatterns: [
-      { pattern: ".env" },
-      { pattern: ".env.local" },
-      { pattern: ".env.production" },
-      { pattern: ".env.prod" },
-      { pattern: ".dev.vars" },
+  policies: {
+    rules: [
+      {
+        id: "secret-files",
+        description: "Files containing secrets",
+        patterns: [
+          { pattern: ".env" },
+          { pattern: ".env.local" },
+          { pattern: ".env.production" },
+          { pattern: ".env.prod" },
+          { pattern: ".dev.vars" },
+        ],
+        allowedPatterns: [
+          { pattern: "*.example.env" },
+          { pattern: "*.sample.env" },
+          { pattern: "*.test.env" },
+          { pattern: ".env.example" },
+          { pattern: ".env.sample" },
+          { pattern: ".env.test" },
+        ],
+        protection: "noAccess",
+        onlyIfExists: true,
+        blockMessage:
+          "Accessing {file} is not allowed. This file contains secrets. " +
+          "Explain to the user why you want to access this file, and if changes are needed ask the user to make them.",
+      },
     ],
-    allowedPatterns: [
-      { pattern: "*.example.env" },
-      { pattern: "*.sample.env" },
-      { pattern: "*.test.env" },
-      { pattern: ".env.example" },
-      { pattern: ".env.sample" },
-      { pattern: ".env.test" },
-    ],
-    protectedDirectories: [],
-    protectedTools: ["read", "write", "edit", "bash", "grep", "find", "ls"],
-    onlyBlockIfExists: true,
-    blockMessage:
-      "Accessing {file} is not allowed. Environment files containing secrets are protected. " +
-      "Explain to the user why you want to access this .env file, and if changes are needed ask the user to make them. " +
-      "Only .env.example, .env.sample, or .env.test files can be accessed.",
   },
   permissionGate: {
     patterns: [
@@ -198,6 +239,28 @@ export const configLoader = new ConfigLoader<GuardrailsConfig, ResolvedConfig>(
     scopes: ["global", "local", "memory"],
     migrations,
     afterMerge: (resolved, global, local, memory) => {
+      const ruleMap = new Map<string, PolicyRule>();
+
+      for (const rule of DEFAULT_CONFIG.policies.rules) {
+        ruleMap.set(rule.id, rule);
+      }
+      if (global?.policies?.rules) {
+        for (const rule of global.policies.rules) {
+          ruleMap.set(rule.id, rule);
+        }
+      }
+      if (local?.policies?.rules) {
+        for (const rule of local.policies.rules) {
+          ruleMap.set(rule.id, rule);
+        }
+      }
+      if (memory?.policies?.rules) {
+        for (const rule of memory.policies.rules) {
+          ruleMap.set(rule.id, rule);
+        }
+      }
+      resolved.policies.rules = [...ruleMap.values()];
+
       // customPatterns replaces the entire patterns array and disables
       // built-in structural matchers (user owns all matching).
       // Priority: memory > local > global

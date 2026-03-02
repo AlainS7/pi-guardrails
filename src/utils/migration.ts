@@ -21,7 +21,7 @@ import { pendingWarnings } from "./warnings";
  * Keep this independent from package.json version.
  * Bump only when config schema/default migration markers change.
  */
-export const CURRENT_VERSION = "0.7.0-20260204";
+export const CURRENT_VERSION = "0.8.0-20260228";
 
 /**
  * Check if a config needs migration (no version field = v0).
@@ -82,6 +82,98 @@ export function migrateV0(config: GuardrailsConfig): GuardrailsConfig {
 
   migrated.version = CURRENT_VERSION;
   return migrated;
+}
+
+/**
+ * Check if a config still uses deprecated envFiles/protectEnvFiles fields.
+ */
+export function needsEnvFilesToPoliciesMigration(
+  config: GuardrailsConfig,
+): boolean {
+  const raw = config as Record<string, unknown>;
+  if (raw.envFiles !== undefined) return true;
+
+  const features = raw.features as Record<string, unknown> | undefined;
+  return features?.protectEnvFiles !== undefined;
+}
+
+/**
+ * Migrate deprecated envFiles/protectEnvFiles fields to policies.
+ */
+export function migrateEnvFilesToPolicies(
+  config: GuardrailsConfig,
+): GuardrailsConfig {
+  const migrated = structuredClone(config);
+  const raw = migrated as Record<string, unknown>;
+  const features = raw.features as Record<string, unknown> | undefined;
+  const envFiles = raw.envFiles as Record<string, unknown> | undefined;
+
+  if (features?.protectEnvFiles !== undefined) {
+    features.policies = features.protectEnvFiles;
+    delete features.protectEnvFiles;
+  }
+
+  if (envFiles) {
+    const rule: Record<string, unknown> = {
+      id: "secret-files",
+      description: "Files containing secrets (migrated from envFiles)",
+      protection: "noAccess",
+    };
+
+    if (envFiles.protectedPatterns) {
+      rule.patterns = envFiles.protectedPatterns;
+    }
+    if (envFiles.allowedPatterns) {
+      rule.allowedPatterns = envFiles.allowedPatterns;
+    }
+    if (envFiles.onlyBlockIfExists !== undefined) {
+      rule.onlyIfExists = envFiles.onlyBlockIfExists;
+    }
+    if (typeof envFiles.blockMessage === "string") {
+      rule.blockMessage = envFiles.blockMessage;
+    }
+
+    if (Array.isArray(envFiles.protectedDirectories)) {
+      const dirs = envFiles.protectedDirectories as Array<
+        Record<string, unknown>
+      >;
+      const patterns = Array.isArray(rule.patterns)
+        ? ([...rule.patterns] as Array<Record<string, unknown>>)
+        : [];
+
+      for (const dir of dirs) {
+        const dirPattern = dir.pattern;
+        if (typeof dirPattern !== "string" || dirPattern.trim() === "") {
+          continue;
+        }
+
+        const normalized = dirPattern.endsWith("/**")
+          ? dirPattern
+          : `${dirPattern}/**`;
+        patterns.push({ pattern: normalized, regex: dir.regex });
+      }
+
+      if (patterns.length > 0) {
+        rule.patterns = patterns;
+      }
+    }
+
+    if (!Array.isArray(rule.patterns) || rule.patterns.length === 0) {
+      rule.patterns = [
+        { pattern: ".env" },
+        { pattern: ".env.local" },
+        { pattern: ".env.production" },
+        { pattern: ".env.prod" },
+        { pattern: ".dev.vars" },
+      ];
+    }
+
+    raw.policies = { rules: [rule] };
+    delete raw.envFiles;
+  }
+
+  raw.version = CURRENT_VERSION;
+  return migrated as GuardrailsConfig;
 }
 
 /**

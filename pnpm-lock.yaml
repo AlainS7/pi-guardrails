@@ -13,8 +13,8 @@ importers:
   .:
     dependencies:
       '@aliou/pi-utils-settings':
-        specifier: ^0.6.0
-        version: 0.6.0(@mariozechner/pi-coding-agent@0.52.7(ws@8.19.0)(zod@3.25.76))
+        specifier: ^0.7.0
+        version: 0.7.0(@mariozechner/pi-coding-agent@0.52.7(ws@8.19.0)(zod@3.25.76))
       '@aliou/sh':
         specifier: ^0.1.0
         version: 0.1.0
@@ -60,8 +60,8 @@ packages:
     peerDependencies:
       '@biomejs/biome': '>=2.0.0'
 
-  '@aliou/pi-utils-settings@0.6.0':
-    resolution: {integrity: sha512-raFMvVlqwWIzCIEIQCZFTYTRUukrC3xa/uHb/Af3WcWwrKk6+qYDAqymXvm7HTWub1H0uDt76XcAOIy/Qt1lXg==}
+  '@aliou/pi-utils-settings@0.7.0':
+    resolution: {integrity: sha512-sfnQXkK2QQS2fnmCtK8SrMyq0Fek9iHdUxii5VcSE0IkAm/rqZsUUeORhMVOBNbyG+7hZuVXqmbWmA0Xinb7/w==}
     peerDependencies:
       '@mariozechner/pi-coding-agent': '>=0.51.0'
     peerDependenciesMeta:
@@ -1563,7 +1563,7 @@ snapshots:
     dependencies:
       '@biomejs/biome': 2.4.2
 
-  '@aliou/pi-utils-settings@0.6.0(@mariozechner/pi-coding-agent@0.52.7(ws@8.19.0)(zod@3.25.76))':
+  '@aliou/pi-utils-settings@0.7.0(@mariozechner/pi-coding-agent@0.52.7(ws@8.19.0)(zod@3.25.76))':
     optionalDependencies:
       '@mariozechner/pi-coding-agent': 0.52.7(ws@8.19.0)(zod@3.25.76)
 

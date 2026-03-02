@@ -1,9 +1,9 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { ResolvedConfig } from "../config";
 import { setupPermissionGateHook } from "./permission-gate";
-import { setupProtectEnvFilesHook } from "./protect-env-files";
+import { setupPoliciesHook } from "./policies";
 
 export function setupGuardrailsHooks(pi: ExtensionAPI, config: ResolvedConfig) {
-  setupProtectEnvFilesHook(pi, config);
+  setupPoliciesHook(pi, config);
   setupPermissionGateHook(pi, config);
 }
