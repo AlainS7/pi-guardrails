@@ -1,3 +1,5 @@
+![banner](https://assets.aliou.me/pi-extensions/banners/pi-guardrails.png)
+
 # Guardrails
 
 Security hooks for Pi to reduce accidental destructive actions and secret-file access.
