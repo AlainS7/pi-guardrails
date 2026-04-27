@@ -159,6 +159,11 @@ Allowed path entry forms:
 - `/path/to/dir/*` or `/path/to/dir/**` -> treated as directory grant (compat)
 - `/path/to/file` -> exact file grant
 
+Additional safeguard:
+- Editing files under `~/.pi/agent/extensions/` with `write` or `edit` always requires explicit approval.
+- Choosing "Allow for session" suppresses repeated prompts for that session.
+- In non-UI/headless mode, extension edits are denied by default.
+
 ## Permission gate
 
 Detects dangerous bash commands and prompts user confirmation.
