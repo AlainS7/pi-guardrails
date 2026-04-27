@@ -313,6 +313,57 @@ describe("path access grant persistence and extension edit boundary", () => {
     expect(result).toEqual(expect.objectContaining({ block: true }));
   });
 
+  it("does not treat ctx7 library IDs as filesystem paths", async () => {
+    const { pi, getToolHandler } = createMockPi();
+    setupPathAccessHook(pi);
+    const handler = getToolHandler();
+
+    const ctx = createEventContext({
+      cwd: "/Users/alainsoto/.pi",
+      hasUI: false,
+    });
+
+    const result = await handler(
+      {
+        type: "tool_call",
+        toolCallId: "tc_ctx7_docs_id",
+        toolName: "bash",
+        input: {
+          command: 'npx ctx7@latest docs /badlogic/pi-mono "what is pi"',
+        },
+      },
+      ctx,
+    );
+
+    expect(result).toBeUndefined();
+  });
+
+  it("still enforces path access for real paths in ctx7 command", async () => {
+    const { pi, getToolHandler } = createMockPi();
+    setupPathAccessHook(pi);
+    const handler = getToolHandler();
+
+    const ctx = createEventContext({
+      cwd: "/Users/alainsoto/.pi",
+      hasUI: false,
+    });
+
+    const result = await handler(
+      {
+        type: "tool_call",
+        toolCallId: "tc_ctx7_docs_and_file",
+        toolName: "bash",
+        input: {
+          command:
+            'npx ctx7@latest docs /badlogic/pi-mono "what is pi" && cat /etc/hosts',
+        },
+      },
+      ctx,
+    );
+
+    expect(result).toEqual(expect.objectContaining({ block: true }));
+  });
+
   it("remembers allow-for-session decision", async () => {
     setMockConfig({
       features: { pathAccess: true },
