@@ -1,3 +1,4 @@
+import { matchesGlob } from "node:path";
 import { isWithinBoundary } from "./path";
 
 export type PathDecision =
@@ -22,12 +23,28 @@ export function isPathAllowed(
   allowedPaths: string[],
 ): boolean {
   for (const entry of allowedPaths) {
+    // Primary directory grant form.
     if (entry.endsWith("/")) {
       const dirPath = entry.slice(0, -1);
       if (isWithinBoundary(absPath, dirPath)) return true;
-    } else {
-      if (absPath === entry) return true;
+      continue;
     }
+
+    // Back-compat: users often used "/path/*" or "/path/**" for directory grants.
+    if (entry.endsWith("/*") || entry.endsWith("/**")) {
+      const dirPath = entry.replace(/\/(?:\*|\*\*)$/, "");
+      if (isWithinBoundary(absPath, dirPath)) return true;
+      continue;
+    }
+
+    // Optional glob support for non-directory entries.
+    if (/\*|\?|\[|\]|\{|\}/.test(entry)) {
+      if (matchesGlob(absPath, entry)) return true;
+      continue;
+    }
+
+    // Exact file grant.
+    if (absPath === entry) return true;
   }
   return false;
 }

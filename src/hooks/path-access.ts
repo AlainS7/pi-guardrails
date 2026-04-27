@@ -32,7 +32,7 @@ type PromptResult =
 // Pending grant to be persisted after all targets pass
 interface PendingGrant {
   storagePath: string; // in storage form (~/..., trailing / for dirs)
-  scope: "memory" | "local";
+  scope: "memory" | "global";
   absolutePath: string; // for in-loop matching
 }
 
@@ -239,7 +239,7 @@ function createPromptComponent(
  */
 async function persistGrant(
   storagePath: string,
-  scope: "memory" | "local",
+  scope: "memory" | "global",
 ): Promise<void> {
   const raw = (configLoader.getRawConfig(scope) ?? {}) as Record<
     string,
@@ -343,7 +343,7 @@ export function setupPathAccessHook(pi: ExtensionAPI): void {
 
       // Handle session/always grants
       if (result === "allow-file-session" || result === "allow-file-always") {
-        const scope = result === "allow-file-session" ? "memory" : "local";
+        const scope = result === "allow-file-session" ? "memory" : "global";
         const storage = toStorageForm(absPath, false);
         pendingGrants.push({
           storagePath: storage,
@@ -354,7 +354,7 @@ export function setupPathAccessHook(pi: ExtensionAPI): void {
       }
 
       if (result === "allow-dir-session" || result === "allow-dir-always") {
-        const scope = result === "allow-dir-session" ? "memory" : "local";
+        const scope = result === "allow-dir-session" ? "memory" : "global";
         const dirPath = isDirectoryTool ? absPath : parentDir;
 
         if (isGrantTooBroad(dirPath)) {

@@ -70,6 +70,42 @@ describe("isPathAllowed", () => {
       expect(isPathAllowed(path, ["/foo/file.ts", "/bar/"])).toBe(expected);
     });
   });
+
+  describe("when entry uses wildcard directory compatibility form", () => {
+    it.each([
+      {
+        entry: "/opt/homebrew/lib/node_modules/*",
+        path: "/opt/homebrew/lib/node_modules",
+        expected: true,
+      },
+      {
+        entry: "/opt/homebrew/lib/node_modules/*",
+        path: "/opt/homebrew/lib/node_modules/@aliou/pi-guardrails",
+        expected: true,
+      },
+      {
+        entry: "/opt/homebrew/lib/node_modules/**",
+        path: "/opt/homebrew/lib/node_modules/@aliou/pi-guardrails/src/index.ts",
+        expected: true,
+      },
+      {
+        entry: "/opt/homebrew/lib/node_modules/*",
+        path: "/opt/homebrew/lib/node_modulesx",
+        expected: false,
+      },
+    ])("$entry -> $path => $expected", ({ entry, path, expected }) => {
+      expect(isPathAllowed(path, [entry])).toBe(expected);
+    });
+  });
+
+  describe("when entry is a glob", () => {
+    it.each([
+      { entry: "/tmp/*.log", path: "/tmp/app.log", expected: true },
+      { entry: "/tmp/*.log", path: "/tmp/app.txt", expected: false },
+    ])("$entry -> $path => $expected", ({ entry, path, expected }) => {
+      expect(isPathAllowed(path, [entry])).toBe(expected);
+    });
+  });
 });
 
 describe("checkPathAccess", () => {

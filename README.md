@@ -147,12 +147,17 @@ Restrict tool access to the current working directory. When enabled, any tool ca
 }
 ```
 
-Grants are stored in project config (always) or session memory (session). The `allowedPaths` array is merged across all config scopes.
+Grants are stored in global config (always) or session memory (session). The `allowedPaths` array is merged across all config scopes.
 
 Limitations:
 - Symlinks are not resolved (lexical path comparison only).
 - Bash path extraction is best-effort (AST-based heuristics).
 - In non-interactive mode, `ask` mode degrades to `block`.
+
+Allowed path entry forms:
+- `/path/to/dir/` -> directory grant
+- `/path/to/dir/*` or `/path/to/dir/**` -> treated as directory grant (compat)
+- `/path/to/file` -> exact file grant
 
 ## Permission gate
 
