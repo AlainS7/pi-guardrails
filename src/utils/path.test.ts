@@ -1,8 +1,11 @@
-import { homedir } from "node:os";
+import { mkdtemp, rm, symlink } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   expandHomePath,
   isWithinBoundary,
+  isWithinBoundaryResolved,
   normalizeForDisplay,
   resolveFromCwd,
   toStorageForm,
@@ -98,6 +101,26 @@ describe("isWithinBoundary", () => {
     },
   ])("when $desc, returns $expected", ({ target, root, expected }) => {
     expect(isWithinBoundary(target, root)).toBe(expected);
+  });
+});
+
+describe("isWithinBoundaryResolved", () => {
+  it("rejects symlink escape from inside boundary", async () => {
+    const root = await mkdtemp(join(tmpdir(), "guardrails-root-"));
+    const outside = await mkdtemp(join(tmpdir(), "guardrails-outside-"));
+    const linkPath = join(root, "escape");
+
+    try {
+      await symlink(outside, linkPath);
+
+      expect(isWithinBoundary(join(linkPath, "new-file.txt"), root)).toBe(true);
+      await expect(
+        isWithinBoundaryResolved(join(linkPath, "new-file.txt"), root),
+      ).resolves.toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
   });
 });
 
