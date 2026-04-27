@@ -1,5 +1,13 @@
+import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+} from "node:path";
 
 /**
  * Expand a leading tilde to the current user's home directory.
@@ -27,6 +35,47 @@ export function isWithinBoundary(
 ): boolean {
   const rel = relative(rootAbsPath, targetAbsPath);
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+async function resolvePathWithSymlinks(absPath: string): Promise<string> {
+  const normalized = resolve(absPath);
+  const unresolvedSegments: string[] = [];
+  let cursor = normalized;
+
+  while (true) {
+    try {
+      const resolvedBase = await realpath(cursor);
+      return unresolvedSegments.reduce(
+        (acc, segment) => resolve(acc, segment),
+        resolvedBase,
+      );
+    } catch {
+      const parent = dirname(cursor);
+      if (parent === cursor) {
+        return normalized;
+      }
+
+      unresolvedSegments.unshift(basename(cursor));
+      cursor = parent;
+    }
+  }
+}
+
+/**
+ * Symlink-aware boundary check.
+ * Resolves both paths through realpath (best-effort, supports non-existent leaf targets)
+ * before applying lexical descendant checks.
+ */
+export async function isWithinBoundaryResolved(
+  targetAbsPath: string,
+  rootAbsPath: string,
+): Promise<boolean> {
+  const [resolvedTarget, resolvedRoot] = await Promise.all([
+    resolvePathWithSymlinks(targetAbsPath),
+    resolvePathWithSymlinks(rootAbsPath),
+  ]);
+
+  return isWithinBoundary(resolvedTarget, resolvedRoot);
 }
 
 /**
