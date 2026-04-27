@@ -1,5 +1,5 @@
 import { matchesGlob } from "node:path";
-import { isWithinBoundary } from "./path";
+import { isWithinBoundary, isWithinBoundaryResolved } from "./path";
 
 export type PathDecision =
   | { kind: "allow" }
@@ -68,6 +68,62 @@ export function checkPathAccess(
   }
 
   // mode === "ask"
+  if (!state.hasUI) {
+    return {
+      kind: "deny",
+      reason: `Access to ${displayPath} is blocked (outside working directory, no UI to confirm).`,
+    };
+  }
+
+  return { kind: "ask", absolutePath, displayPath };
+}
+
+/**
+ * Symlink-aware variant used by tool hooks for boundary enforcement.
+ */
+export async function checkPathAccessResolved(
+  absolutePath: string,
+  displayPath: string,
+  state: PathAccessState,
+): Promise<PathDecision> {
+  if (state.mode === "allow") return { kind: "allow" };
+
+  if (await isWithinBoundaryResolved(absolutePath, state.cwd)) {
+    return { kind: "allow" };
+  }
+
+  for (const entry of state.allowedPaths) {
+    if (entry.endsWith("/")) {
+      const dirPath = entry.slice(0, -1);
+      if (await isWithinBoundaryResolved(absolutePath, dirPath)) {
+        return { kind: "allow" };
+      }
+      continue;
+    }
+
+    if (entry.endsWith("/*") || entry.endsWith("/**")) {
+      const dirPath = entry.replace(/\/(?:\*|\*\*)$/, "");
+      if (await isWithinBoundaryResolved(absolutePath, dirPath)) {
+        return { kind: "allow" };
+      }
+      continue;
+    }
+
+    if (/\*|\?|\[|\]|\{|\}/.test(entry)) {
+      if (matchesGlob(absolutePath, entry)) return { kind: "allow" };
+      continue;
+    }
+
+    if (absolutePath === entry) return { kind: "allow" };
+  }
+
+  if (state.mode === "block") {
+    return {
+      kind: "deny",
+      reason: `Access to ${displayPath} is blocked (outside working directory).`,
+    };
+  }
+
   if (!state.hasUI) {
     return {
       kind: "deny",
