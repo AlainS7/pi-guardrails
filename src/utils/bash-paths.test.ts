@@ -78,6 +78,26 @@ describe("extractBashPathCandidates", () => {
     });
   });
 
+  describe("when command uses ctx7 docs library IDs", () => {
+    it("ignores ctx7 library ID argument as non-filesystem token", async () => {
+      expect(
+        await extractBashPathCandidates(
+          'npx ctx7@latest docs /badlogic/pi-mono "what is pi"',
+          CWD,
+        ),
+      ).toEqual([]);
+    });
+
+    it("still detects real file paths in same command", async () => {
+      expect(
+        await extractBashPathCandidates(
+          'npx ctx7@latest docs /vercel/next.js/v14.3.0 "q" && cat /etc/hosts',
+          CWD,
+        ),
+      ).toEqual(["/etc/hosts"]);
+    });
+  });
+
   describe("when command is malformed", () => {
     it("falls back to regex tokenization on parse failure", async () => {
       // Unbalanced quote triggers parse error; regex fallback still finds paths
@@ -86,6 +106,15 @@ describe("extractBashPathCandidates", () => {
         CWD,
       );
       expect(result).toContain("/tmp/foo");
+    });
+
+    it("ignores ctx7 docs library ID in regex fallback", async () => {
+      expect(
+        await extractBashPathCandidates(
+          "npx ctx7@latest docs /badlogic/pi-mono 'unterminated",
+          CWD,
+        ),
+      ).toEqual([]);
     });
   });
 });
