@@ -20,6 +20,17 @@ function maybePathLike(token: string): boolean {
   return false;
 }
 
+function isCtx7Invocation(words: string[]): boolean {
+  return words.some((word) => /(^|[/])ctx7(@|$)/.test(word));
+}
+
+function isCtx7LibraryId(token: string): boolean {
+  if (!token.startsWith("/")) return false;
+  const segments = token.split("/").filter(Boolean);
+  if (segments.length < 2 || segments.length > 4) return false;
+  return segments.every((segment) => /^[A-Za-z0-9._-]+$/.test(segment));
+}
+
 async function expandCandidate(
   candidate: string,
   cwd: string,
@@ -44,8 +55,10 @@ export async function extractBashPathCandidates(
   const addCandidate = async (
     token: string,
     forcePath = false,
+    skip = false,
   ): Promise<void> => {
     if (!token || token.startsWith("-")) return;
+    if (skip) return;
     if (!forcePath && !maybePathLike(token)) return;
 
     const expanded = await expandCandidate(token, cwd);
@@ -64,8 +77,14 @@ export async function extractBashPathCandidates(
 
     walkCommands(ast, (cmd) => {
       const words = (cmd.words ?? []).map(wordToString);
+      const isCtx7 = isCtx7Invocation(words as string[]);
+
       for (let i = 1; i < words.length; i++) {
-        pending.push(addCandidate(words[i] as string));
+        const token = words[i] as string;
+        const previous = String(words[i - 1] ?? "");
+        const isCtx7LibraryArg =
+          isCtx7 && previous === "docs" && isCtx7LibraryId(token);
+        pending.push(addCandidate(token, false, isCtx7LibraryArg));
       }
       for (const redir of cmd.redirects ?? []) {
         pending.push(addCandidate(wordToString(redir.target), true));
@@ -78,17 +97,18 @@ export async function extractBashPathCandidates(
   } catch {
     // Fallback: regex tokenization
     const tokenRegex = /"([^"]+)"|'([^']+)'|`([^`]+)`|([^\s"'`<>|;&]+)/g;
-    for (const match of command.matchAll(tokenRegex)) {
-      const token = match[1] ?? match[2] ?? match[3] ?? match[4] ?? "";
+    const tokens = [...command.matchAll(tokenRegex)].map(
+      (match) => match[1] ?? match[2] ?? match[3] ?? match[4] ?? "",
+    );
+    const isCtx7 = isCtx7Invocation(tokens);
+
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i] as string;
+      const previous = String(tokens[i - 1] ?? "");
+      const isCtx7LibraryArg =
+        isCtx7 && previous === "docs" && isCtx7LibraryId(token);
       if (token && !token.startsWith("-") && maybePathLike(token)) {
-        const expanded = await expandCandidate(token, cwd);
-        for (const file of expanded) {
-          const abs = resolve(cwd, expandHomePath(file));
-          if (!seen.has(abs)) {
-            seen.add(abs);
-            results.push(abs);
-          }
-        }
+        await addCandidate(token, false, isCtx7LibraryArg);
       }
     }
     return results;
