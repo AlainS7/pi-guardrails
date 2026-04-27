@@ -1,6 +1,9 @@
 import { homedir } from "node:os";
-import { dirname } from "node:path";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { dirname, resolve } from "node:path";
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+} from "@mariozechner/pi-coding-agent";
 import {
   Container,
   Key,
@@ -13,11 +16,15 @@ import { configLoader } from "../config";
 import { extractBashPathCandidates } from "../utils/bash-paths";
 import { emitBlocked } from "../utils/events";
 import {
+  isWithinBoundaryResolved,
   normalizeForDisplay,
   resolveFromCwd,
   toStorageForm,
 } from "../utils/path";
-import { checkPathAccess, type PathAccessState } from "../utils/path-access";
+import {
+  checkPathAccessResolved,
+  type PathAccessState,
+} from "../utils/path-access";
 
 // Grant result type from the UI prompt
 type PromptResult =
@@ -34,6 +41,83 @@ interface PendingGrant {
   storagePath: string; // in storage form (~/..., trailing / for dirs)
   scope: "memory" | "global";
   absolutePath: string; // for in-loop matching
+}
+
+const GLOBAL_EXTENSIONS_ROOT = resolve(homedir(), ".pi/agent/extensions");
+const EDIT_TOOLS = new Set(["write", "edit"]);
+const EXTENSION_PATH_MARKERS = [
+  ".pi/agent/extensions",
+  ".pi\\agent\\extensions",
+];
+const SELECT_ALLOW_ONCE = "Allow once";
+const SELECT_ALLOW_SESSION = "Allow for session";
+const SELECT_DENY = "Deny";
+const EDIT_SELECTIONS = [
+  SELECT_ALLOW_ONCE,
+  SELECT_ALLOW_SESSION,
+  SELECT_DENY,
+] as const;
+
+const sessionEditApproved = new Set<string>();
+
+function getSessionId(ctx: ExtensionContext): string {
+  return ctx.sessionManager.getSessionId() ?? "unknown-session";
+}
+
+function commandMentionsGlobalExtensions(command: string): boolean {
+  return EXTENSION_PATH_MARKERS.some((marker) => command.includes(marker));
+}
+
+async function requestExtensionsEditApproval(
+  ctx: ExtensionContext,
+): Promise<{ allow: true } | { allow: false; reason: string }> {
+  const sessionId = getSessionId(ctx);
+  if (sessionEditApproved.has(sessionId)) return { allow: true };
+
+  if (!ctx.hasUI) {
+    return {
+      allow: false,
+      reason:
+        "Editing ~/.pi/agent/extensions is blocked until explicitly approved (no UI to confirm).",
+    };
+  }
+
+  const selection = await ctx.ui.select(
+    "Edit global Pi extensions (~/.pi/agent/extensions)?",
+    [...EDIT_SELECTIONS],
+  );
+
+  if (selection === SELECT_ALLOW_ONCE) return { allow: true };
+  if (selection === SELECT_ALLOW_SESSION) {
+    sessionEditApproved.add(sessionId);
+    return { allow: true };
+  }
+
+  return {
+    allow: false,
+    reason: "User denied editing ~/.pi/agent/extensions in this session.",
+  };
+}
+
+async function enforceExtensionsEditBoundary(
+  toolName: string,
+  absolutePath: string,
+  ctx: ExtensionContext,
+): Promise<{ allow: true } | { allow: false; reason: string }> {
+  if (!EDIT_TOOLS.has(toolName)) return { allow: true };
+  if (!(await isWithinBoundaryResolved(absolutePath, GLOBAL_EXTENSIONS_ROOT))) {
+    return { allow: true };
+  }
+
+  return requestExtensionsEditApproval(ctx);
+}
+
+async function enforceExtensionsBashBoundary(
+  command: string,
+  ctx: ExtensionContext,
+): Promise<{ allow: true } | { allow: false; reason: string }> {
+  if (!commandMentionsGlobalExtensions(command)) return { allow: true };
+  return requestExtensionsEditApproval(ctx);
 }
 
 /**
@@ -258,6 +342,10 @@ async function persistGrant(
   });
 }
 
+export function __resetPathAccessSessionStateForTests(): void {
+  sessionEditApproved.clear();
+}
+
 export function setupPathAccessHook(pi: ExtensionAPI): void {
   pi.on("tool_call", async (event, ctx) => {
     // Read config live on every invocation
@@ -275,6 +363,16 @@ export function setupPathAccessHook(pi: ExtensionAPI): void {
       if (raw) absolutePaths = [resolveFromCwd(raw, ctx.cwd)];
     } else if (toolName === "bash") {
       const command = String(input.command ?? "");
+      const bashEditGate = await enforceExtensionsBashBoundary(command, ctx);
+      if (!bashEditGate.allow) {
+        emitBlocked(pi, {
+          feature: "pathAccess",
+          toolName,
+          input: event.input,
+          reason: bashEditGate.reason,
+        });
+        return { block: true, reason: bashEditGate.reason };
+      }
       absolutePaths = await extractBashPathCandidates(command, ctx.cwd);
     } else {
       return;
@@ -306,8 +404,27 @@ export function setupPathAccessHook(pi: ExtensionAPI): void {
         hasUI: ctx.hasUI,
       };
 
+      const editGate = await enforceExtensionsEditBoundary(
+        toolName,
+        absPath,
+        ctx,
+      );
+      if (!editGate.allow) {
+        emitBlocked(pi, {
+          feature: "pathAccess",
+          toolName,
+          input: event.input,
+          reason: editGate.reason,
+        });
+        return { block: true, reason: editGate.reason };
+      }
+
       const displayPath = normalizeForDisplay(absPath, ctx.cwd);
-      const decision = checkPathAccess(absPath, displayPath, state);
+      const decision = await checkPathAccessResolved(
+        absPath,
+        displayPath,
+        state,
+      );
 
       if (decision.kind === "allow") continue;
 
