@@ -3,6 +3,7 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { parse } from "@aliou/sh";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { PolicyRule, Protection, ResolvedConfig } from "../config";
+import { isClearlyReadOnlyBashCommand } from "../utils/bash-intent";
 import { emitBlocked } from "../utils/events";
 import { expandGlob, hasGlobChars } from "../utils/glob-expander";
 import {
@@ -18,7 +19,7 @@ const DEFAULT_BLOCK_MESSAGES: Record<Protection, string> = {
   noAccess:
     "Accessing {file} is not allowed. This file is protected. Ask the user if changes are needed.",
   readOnly:
-    "Writing to {file} is not allowed. This file is read-only. Use the read tool to inspect it instead of bash commands like cat or ls.",
+    "Writing to {file} is not allowed. This file is read-only. Use dedicated read/list tools or clearly read-only bash commands.",
   none: "",
 };
 
@@ -306,6 +307,14 @@ export function setupPoliciesHook(pi: ExtensionAPI, config: ResolvedConfig) {
         ctx.cwd,
       );
       if (!effective) continue;
+
+      if (
+        toolName === "bash" &&
+        effective.protection === "readOnly" &&
+        isClearlyReadOnlyBashCommand(String(event.input.command ?? ""))
+      ) {
+        continue;
+      }
 
       const blockedTools = BLOCKED_TOOLS[effective.protection];
       if (!blockedTools.has(toolName)) continue;

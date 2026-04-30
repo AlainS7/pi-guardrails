@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type {
   ExtensionAPI,
   ExtensionContext,
@@ -78,6 +80,15 @@ function setMockConfig(config: {
   ).mockReturnValue(config);
 }
 
+const PI_AGENT_CWD = join(homedir(), ".pi/agent");
+const PI_HOME_CWD = join(homedir(), ".pi");
+const SAMPLE_PROJECT_CWD = join(homedir(), "project");
+const CURSOR_PROVIDER_DIR = join(
+  homedir(),
+  ".pi/agent/extensions/cursor-provider",
+);
+const LS_RG_EXTENSIONS = `ls -la "${CURSOR_PROVIDER_DIR}" && rg --files "${CURSOR_PROVIDER_DIR}"`;
+
 describe("path access grant persistence and extension edit boundary", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -94,7 +105,7 @@ describe("path access grant persistence and extension edit boundary", () => {
     const handler = getToolHandler();
 
     const ctx = createEventContext({
-      cwd: "/Users/alainsoto/.pi/agent",
+      cwd: PI_AGENT_CWD,
       hasUI: true,
       ui: {
         custom: vi.fn(
@@ -138,7 +149,7 @@ describe("path access grant persistence and extension edit boundary", () => {
     const handler = getToolHandler();
 
     const ctx = createEventContext({
-      cwd: "/Users/alainsoto/.pi/agent",
+      cwd: PI_AGENT_CWD,
       hasUI: true,
       ui: {
         custom: vi.fn(
@@ -194,7 +205,7 @@ describe("path access grant persistence and extension edit boundary", () => {
     ) as ExtensionContext["ui"]["select"];
 
     const ctx = createEventContext({
-      cwd: "/Users/alainsoto/.pi",
+      cwd: PI_HOME_CWD,
       hasUI: true,
       ui: { select },
     });
@@ -233,7 +244,7 @@ describe("path access grant persistence and extension edit boundary", () => {
     const handler = getToolHandler();
 
     const ctx = createEventContext({
-      cwd: "/Users/alainsoto/.pi",
+      cwd: PI_HOME_CWD,
       hasUI: false,
     });
 
@@ -256,7 +267,7 @@ describe("path access grant persistence and extension edit boundary", () => {
     );
   });
 
-  it("asks before bash commands that mention global extensions", async () => {
+  it("does not prompt for clearly read-only bash commands on extensions", async () => {
     const { pi, getToolHandler } = createMockPi();
     setupPathAccessHook(pi);
     const handler = getToolHandler();
@@ -266,7 +277,38 @@ describe("path access grant persistence and extension edit boundary", () => {
     ) as ExtensionContext["ui"]["select"];
 
     const ctx = createEventContext({
-      cwd: "/Users/alainsoto/project",
+      cwd: PI_HOME_CWD,
+      hasUI: true,
+      ui: { select },
+    });
+
+    const result = await handler(
+      {
+        type: "tool_call",
+        toolCallId: "tc_bash_extensions_read_only",
+        toolName: "bash",
+        input: {
+          command: LS_RG_EXTENSIONS,
+        },
+      },
+      ctx,
+    );
+
+    expect(result).toBeUndefined();
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it("asks before mutating bash commands that mention global extensions", async () => {
+    const { pi, getToolHandler } = createMockPi();
+    setupPathAccessHook(pi);
+    const handler = getToolHandler();
+
+    const select = vi.fn(
+      async () => "Deny",
+    ) as ExtensionContext["ui"]["select"];
+
+    const ctx = createEventContext({
+      cwd: SAMPLE_PROJECT_CWD,
       hasUI: true,
       ui: { select },
     });
@@ -293,7 +335,7 @@ describe("path access grant persistence and extension edit boundary", () => {
     const handler = getToolHandler();
 
     const ctx = createEventContext({
-      cwd: "/Users/alainsoto/project",
+      cwd: SAMPLE_PROJECT_CWD,
       hasUI: false,
     });
 
@@ -319,7 +361,7 @@ describe("path access grant persistence and extension edit boundary", () => {
     const handler = getToolHandler();
 
     const ctx = createEventContext({
-      cwd: "/Users/alainsoto/.pi",
+      cwd: PI_HOME_CWD,
       hasUI: false,
     });
 
@@ -344,7 +386,7 @@ describe("path access grant persistence and extension edit boundary", () => {
     const handler = getToolHandler();
 
     const ctx = createEventContext({
-      cwd: "/Users/alainsoto/.pi",
+      cwd: PI_HOME_CWD,
       hasUI: false,
     });
 
@@ -382,7 +424,7 @@ describe("path access grant persistence and extension edit boundary", () => {
     ) as ExtensionContext["ui"]["select"];
 
     const ctx = createEventContext({
-      cwd: "/Users/alainsoto/project",
+      cwd: SAMPLE_PROJECT_CWD,
       hasUI: true,
       ui: { select },
     });

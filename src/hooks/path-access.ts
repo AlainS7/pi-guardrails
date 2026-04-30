@@ -13,6 +13,7 @@ import {
   visibleWidth,
 } from "@mariozechner/pi-tui";
 import { configLoader } from "../config";
+import { isClearlyReadOnlyBashCommand } from "../utils/bash-intent";
 import { extractBashPathCandidates } from "../utils/bash-paths";
 import { emitBlocked } from "../utils/events";
 import {
@@ -117,6 +118,7 @@ async function enforceExtensionsBashBoundary(
   ctx: ExtensionContext,
 ): Promise<{ allow: true } | { allow: false; reason: string }> {
   if (!commandMentionsGlobalExtensions(command)) return { allow: true };
+  if (isClearlyReadOnlyBashCommand(command)) return { allow: true };
   return requestExtensionsEditApproval(ctx);
 }
 
